@@ -15,6 +15,8 @@ ConvexPolygon::~ConvexPolygon()
 
 void ConvexPolygon::setConvexHull(Vec2* points, int numPoints)
 {
+	assert(numPoints >= 3);
+
 	std::sort(points, points + numPoints, Vec2::lexLT);
 
 	Vec2 leftMost = points[0];
@@ -112,7 +114,34 @@ bool ConvexPolygon::pointInPolygon(Vec2 point) const
 	return true;
 }
 
-bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
+namespace
+{
+	// An line represented using a normal and offset.
+	class NormalAndOffset
+	{
+	public:
+		/// Initializes this NormalAndOffset to the line through the given two
+		/// points. The normal to the line is computed by taking the vector from
+		/// a to b, and rotating it by 90 degrees in the counter clockwise
+		/// direction. The front side is the side the normal points towards.
+		void setLine(Vec2 a, Vec2 b)
+		{
+			mNormal.setNormal(a, b);
+			mOffset = mNormal.dot(a);
+		}
+
+		/// Returns whether the given point lies strictly in front of this line.
+		bool pointInFront(Vec2 pt) const
+		{
+			return pt.dot(mNormal) > mOffset;
+		}
+
+		Vec2 mNormal;
+		int64_t mOffset;
+	};
+}
+
+bool ConvexPolygon::overlaps(const ConvexPolygon &b, HDC hdc) const
 {
 	// A rotating calipers based algorithm which tests whether the two convex
 	// polygons overlap.
@@ -184,6 +213,8 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 	aEdge.setLine(mVertices[aCur], mVertices[aNext]);
 	bEdge.setLine(b.mVertices[bCur], b.mVertices[bNext]);
 
+	bool res = true;
+
 	// The main loop. Note that each iteration handles one of the edges, so if
 	// we do a total of aNumVerts + bNumVerts iterations, we know that we must
 	// have handled all edges.
@@ -195,6 +226,19 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 		// or after the orientation of the outgoing edge from bCur.
 		if(aEdge.mNormal.perpDot(bEdge.mNormal) < 0)
 		{
+			Vec2 mid = mVertices[aCur] + mVertices[aNext];
+			mid.mX /= 2;
+			mid.mY /= 2;
+
+			float normalX = aEdge.mNormal.mX;
+			float normalY = aEdge.mNormal.mY;
+			float scale = 20 / std::sqrt(normalX * normalX + normalY * normalY);
+			normalX *= scale;
+			normalY *= scale;
+
+			MoveToEx(hdc, mid.mX, mid.mY, nullptr);
+			LineTo(hdc, mid.mX + (int)normalX, mid.mY + (int)normalY);
+
 			// We'll advancing aCur, but first we will do the separating axis
 			// test for the edge originating from aCur (that is, the edge
 			// between the current vertex and the one we're advancing to). Since
@@ -205,7 +249,7 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 			if(aEdge.pointInFront(b.mVertices[bCur]))
 			{
 				// We found a separating axis, so return 'no overlap'.
-				return false;
+				res = false;
 			}
 
 			// Advance aCur and compute a new aEdge. It's clear that this keeps
@@ -216,6 +260,19 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 		}
 		else
 		{
+			Vec2 mid = b.mVertices[bCur] + b.mVertices[bNext];
+			mid.mX /= 2;
+			mid.mY /= 2;
+
+			float normalX = bEdge.mNormal.mX;
+			float normalY = bEdge.mNormal.mY;
+			float scale = 20 / std::sqrt(normalX * normalX + normalY * normalY);
+			normalX *= scale;
+			normalY *= scale;
+
+			MoveToEx(hdc, mid.mX, mid.mY, nullptr);
+			LineTo(hdc, mid.mX + (int)normalX, mid.mY + (int)normalY);
+
 			// We'll advancing bCur, but first we will do the separating axis
 			// test for the edge originating from bCur (that is, the edge
 			// between the current vertex and the one we're advancing to). Since
@@ -225,17 +282,16 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 			// we know that the vertex we have to test against bEdge is aCur.
 			if(bEdge.pointInFront(mVertices[aCur]))
 			{
-				return false;
+				res = false;
 			}
 
 			// Advance bCur and compute a new bEdge. It's clear that this keeps
 			// the invariant.
 			bCur = bNext;
 			bNext = succModulo(bNext, bNumVerts);
-			bEdge.setLine(mVertices[bCur], mVertices[bNext]);
+			bEdge.setLine(b.mVertices[bCur], b.mVertices[bNext]);
 		}
 	}
 
-	return true;
+	return res;
 }
-
