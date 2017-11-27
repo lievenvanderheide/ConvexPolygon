@@ -254,8 +254,6 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 	aEdge.setLine(mVertices[aCur], mVertices[aNext]);
 	bEdge.setLine(b.mVertices[bCur], b.mVertices[bNext]);
 
-	bool res = true;
-
 	// The main loop. Note that each iteration handles one of the edges, so if
 	// we do a total of aNumVerts + bNumVerts iterations, we know that we must
 	// have handled all edges.
@@ -277,7 +275,7 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 			if(aEdge.pointInFront(b.mVertices[bCur]))
 			{
 				// We found a separating axis, so return 'no overlap'.
-				res = false;
+				return false;
 			}
 
 			// Advance aCur and compute a new aEdge. It's clear that this keeps
@@ -292,7 +290,7 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 
 			if(bEdge.pointInFront(mVertices[aCur]))
 			{
-				res = false;
+				return false;
 			}
 			
 			bCur = bNext;
@@ -301,5 +299,5 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 		}
 	}
 
-	return res;
+	return true;
 }
