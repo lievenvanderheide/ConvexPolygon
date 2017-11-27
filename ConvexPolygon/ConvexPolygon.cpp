@@ -20,84 +20,80 @@ void ConvexPolygon::setConvexHull(Vec2* points, int numPoints)
 	Vec2 leftMost = points[0];
 	Vec2 rightMost = points[numPoints - 1];
 
-	Vec2* topArc = new Vec2[numPoints];
-	Vec2* bottomArc = new Vec2[numPoints];
-	Vec2* topArcBack = topArc;
-	Vec2* bottomArcBack = bottomArc;
+	Vec2* tmp = new Vec2[numPoints];
+	Vec2* lowerArcBegin = tmp;
+	Vec2* lowerArcEnd = tmp;
+	Vec2* upperArcBegin = tmp + numPoints;
+	Vec2* upperArcEnd = tmp + numPoints;
 
-	*(topArcBack++) = points[0];
-	*(bottomArcBack++) = points[0];
+	*(lowerArcEnd++) = points[0];
+	*(--upperArcBegin) = points[0];
 	for(int i = 1; i < numPoints - 1; i++)
 	{
 		if(isCounterClockwise(leftMost, rightMost, points[i]))
 		{
-			while(topArcBack - topArc > 1)
+			while(upperArcEnd - upperArcBegin > 1)
 			{
-				if(isClockwise(*(topArcBack - 2), *(topArcBack - 1), points[i]))
+				if(isClockwise(*(upperArcBegin + 1), *upperArcBegin, points[i]))
 				{
 					break;
 				}
 
-				topArcBack--;
+				upperArcBegin++;
 			}
 
-			*(topArcBack++) = points[i];
+			*(--upperArcBegin) = points[i];
 		}
 		else
 		{
-			while(bottomArcBack - bottomArc > 1)
+			while(lowerArcEnd - lowerArcBegin > 1)
 			{
-				if(isCounterClockwise(*(bottomArcBack - 2), *(bottomArcBack - 1), points[i]))
+				if(isCounterClockwise(*(lowerArcEnd - 2), *(lowerArcEnd - 1), points[i]))
 				{
 					break;
 				}
 
-				bottomArcBack--;
+				lowerArcEnd--;
 			}
 
-			*(bottomArcBack++) = points[i];
+			*(lowerArcEnd++) = points[i];
 		}
 	}
 
-	while(topArcBack - topArc > 1)
+	while(upperArcEnd - upperArcBegin > 1)
 	{
-		if(isClockwise(*(topArcBack - 2), *(topArcBack - 1), rightMost))
+		if(isClockwise(*(upperArcBegin + 1), *upperArcBegin, rightMost))
 		{
 			break;
 		}
 
-		topArcBack--;
+		upperArcBegin++;
 	}
 
-	while(bottomArcBack - bottomArc > 1)
+	while(lowerArcEnd - lowerArcBegin > 1)
 	{
-		if(isCounterClockwise(*(bottomArcBack - 2), *(bottomArcBack - 1), rightMost))
+		if(isCounterClockwise(*(lowerArcEnd - 2), *(lowerArcEnd - 1), rightMost))
 		{
 			break;
 		}
 
-		bottomArcBack--;
+		lowerArcEnd--;
 	}
 
+	// Delete the previous vertices just in case the ConvexPolygon wasn't empty
+	// when setConvexHull was called.
 	delete [] mVertices;
 
-	mNumVertices = (topArcBack - topArc) + (bottomArcBack - bottomArc);
+	int lowerArcSize = lowerArcEnd - lowerArcBegin;
+	int upperArcSize = upperArcEnd - upperArcBegin;
+	mNumVertices = lowerArcSize + upperArcSize;
 	mVertices = new Vec2[mNumVertices];
 	
-	Vec2* verticesBack = mVertices;
-	for(Vec2* v = bottomArc; v != bottomArcBack; v++)
-	{
-		*(verticesBack++) = *v;
-	}
+	std::copy(lowerArcBegin, lowerArcEnd, mVertices);
+	mVertices[lowerArcSize] = rightMost;
+	std::copy(upperArcBegin, upperArcEnd - 1, mVertices + lowerArcSize + 1);
 
-	*(verticesBack++) = rightMost;
-	for(Vec2* v = topArcBack - 1; v != topArc; v--)
-	{
-		*(verticesBack++) = *v;
-	}
-
-	delete [] topArc;
-	delete [] bottomArc;
+	delete [] tmp;
 }
 
 bool ConvexPolygon::pointInPolygon(Vec2 point) const
