@@ -17,11 +17,35 @@ void ConvexPolygon::setConvexHull(Vec2* points, int numPoints)
 {
 	assert(numPoints >= 3);
 
-	std::sort(points, points + numPoints, Vec2::lexLT);
+	// Delete the previous vertices just in case the ConvexPolygon wasn't empty
+	// when setConvexHull was called.
+	delete [] mVertices;
+
+	// Computes the convex hull using a variation of the monotone chain algorithm.
+	//
+	// This algorithm starts by sorting all vertices, then takes the left-most
+	// point and the right-most point, and uses the line between these two to
+	// separate the input points into two sets. The points below the line are
+	// then used to compute the lower arc of the convex hull, the points above
+	// it for the upper arc of the convex hull. The left-most and right-most
+	// points are included in both arcs.
+	//
+	// To build these two arcs, we iterate over all the points which belong to
+	// either one of these arcs, from left to right (this is easy, because we've
+	// already sorted the points), and maintain the upper arc/lower arc of the
+	// convex hull of the set of points we've processed so far.
+	//
+	// Finally, when both arcs are computed, we combine them to form the full
+	// convex hull of the input point set.
+
+	std::sort(points, points + numPoints, Vec2::lexLessThan);
 
 	Vec2 leftMost = points[0];
 	Vec2 rightMost = points[numPoints - 1];
 
+	// Both arcs are initially written to the tmp memory, where the lower arc
+	// uses the memory at the beginning if this block, and the upper arc the
+	// memory at the end of it.
 	Vec2* tmp = new Vec2[numPoints];
 	Vec2* lowerArcBegin = tmp;
 	Vec2* lowerArcEnd = tmp;
@@ -32,8 +56,23 @@ void ConvexPolygon::setConvexHull(Vec2* points, int numPoints)
 	*(--upperArcBegin) = points[0];
 	for(int i = 1; i < numPoints - 1; i++)
 	{
+		// Check whether the current point lies above or below the line from
+		// leftMost or rightMost. If it lies above the line, then the point can
+		// become a part of the upper hull, if it lies below it, it can become a
+		// part of the lower hull.
 		if(isCounterClockwise(leftMost, rightMost, points[i]))
 		{
+			// points[i] lies above the line so it can only contribute to the
+			// upper arc.
+
+			// Since points[i] is the right-most point handled so far, it will
+			// be part of the convex hull of all the points current points,
+			// including points[i], so it should be added to the intermediate
+			// arc. Adding this point might however mean that some of the points
+			// which were part of it shouldn't be anymore.
+			//
+			// This loop strips the vertices which shouldn't be part of the
+			// convex hull anymore from the end of the arc.
 			while(upperArcEnd - upperArcBegin > 1)
 			{
 				if(isClockwise(*(upperArcBegin + 1), *upperArcBegin, points[i]))
@@ -44,10 +83,12 @@ void ConvexPolygon::setConvexHull(Vec2* points, int numPoints)
 				upperArcBegin++;
 			}
 
+			// Add the new point to the arc.
 			*(--upperArcBegin) = points[i];
 		}
 		else
 		{
+			// The same as above, but for the lower arc.
 			while(lowerArcEnd - lowerArcBegin > 1)
 			{
 				if(isCounterClockwise(*(lowerArcEnd - 2), *(lowerArcEnd - 1), points[i]))
@@ -61,6 +102,9 @@ void ConvexPolygon::setConvexHull(Vec2* points, int numPoints)
 			*(lowerArcEnd++) = points[i];
 		}
 	}
+
+	// Finally, remove the points which shouldn't be part of the arcs anymore when
+	// we add the right-most point.
 
 	while(upperArcEnd - upperArcBegin > 1)
 	{
@@ -82,12 +126,9 @@ void ConvexPolygon::setConvexHull(Vec2* points, int numPoints)
 		lowerArcEnd--;
 	}
 
-	// Delete the previous vertices just in case the ConvexPolygon wasn't empty
-	// when setConvexHull was called.
-	delete [] mVertices;
-
-	int lowerArcSize = lowerArcEnd - lowerArcBegin;
-	int upperArcSize = upperArcEnd - upperArcBegin;
+	// Combine the two arcs into a single convex hull.
+	int lowerArcSize = (int)(lowerArcEnd - lowerArcBegin);
+	int upperArcSize = (int)(upperArcEnd - upperArcBegin);
 	mNumVertices = lowerArcSize + upperArcSize;
 	mVertices = new Vec2[mNumVertices];
 	
@@ -141,7 +182,7 @@ namespace
 	};
 }
 
-bool ConvexPolygon::overlaps(const ConvexPolygon &b, HDC hdc) const
+bool ConvexPolygon::overlaps(const ConvexPolygon &b) const
 {
 	// A rotating calipers based algorithm which tests whether the two convex
 	// polygons overlap.
@@ -189,7 +230,7 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b, HDC hdc) const
 	int aFirst = 0;
 	for(int i = 1; i < aNumVerts; i++)
 	{
-		if(Vec2::lexLT(mVertices[i], mVertices[aFirst]))
+		if(Vec2::lexLessThan(mVertices[i], mVertices[aFirst]))
 		{
 			aFirst = i;
 		}
@@ -198,7 +239,7 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b, HDC hdc) const
 	int bFirst = 0;
 	for(int i = 1; i < bNumVerts; i++)
 	{
-		if(Vec2::lexLT(b.mVertices[bFirst], b.mVertices[i]))
+		if(Vec2::lexLessThan(b.mVertices[bFirst], b.mVertices[i]))
 		{
 			bFirst = i;
 		}
@@ -226,19 +267,6 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b, HDC hdc) const
 		// or after the orientation of the outgoing edge from bCur.
 		if(aEdge.mNormal.perpDot(bEdge.mNormal) < 0)
 		{
-			Vec2 mid = mVertices[aCur] + mVertices[aNext];
-			mid.mX /= 2;
-			mid.mY /= 2;
-
-			float normalX = aEdge.mNormal.mX;
-			float normalY = aEdge.mNormal.mY;
-			float scale = 20 / std::sqrt(normalX * normalX + normalY * normalY);
-			normalX *= scale;
-			normalY *= scale;
-
-			MoveToEx(hdc, mid.mX, mid.mY, nullptr);
-			LineTo(hdc, mid.mX + (int)normalX, mid.mY + (int)normalY);
-
 			// We'll advancing aCur, but first we will do the separating axis
 			// test for the edge originating from aCur (that is, the edge
 			// between the current vertex and the one we're advancing to). Since
@@ -260,33 +288,13 @@ bool ConvexPolygon::overlaps(const ConvexPolygon &b, HDC hdc) const
 		}
 		else
 		{
-			Vec2 mid = b.mVertices[bCur] + b.mVertices[bNext];
-			mid.mX /= 2;
-			mid.mY /= 2;
+			// The same as above, but advancing bCur instead of aCur.
 
-			float normalX = bEdge.mNormal.mX;
-			float normalY = bEdge.mNormal.mY;
-			float scale = 20 / std::sqrt(normalX * normalX + normalY * normalY);
-			normalX *= scale;
-			normalY *= scale;
-
-			MoveToEx(hdc, mid.mX, mid.mY, nullptr);
-			LineTo(hdc, mid.mX + (int)normalX, mid.mY + (int)normalY);
-
-			// We'll advancing bCur, but first we will do the separating axis
-			// test for the edge originating from bCur (that is, the edge
-			// between the current vertex and the one we're advancing to). Since
-			// we know that
-			// - The incoming edge to aCur comes before bEdge (from the invariant).
-			// - The outgoing edge from aCur comes after bEdge (we just tested that).
-			// we know that the vertex we have to test against bEdge is aCur.
 			if(bEdge.pointInFront(mVertices[aCur]))
 			{
 				res = false;
 			}
-
-			// Advance bCur and compute a new bEdge. It's clear that this keeps
-			// the invariant.
+			
 			bCur = bNext;
 			bNext = succModulo(bNext, bNumVerts);
 			bEdge.setLine(b.mVertices[bCur], b.mVertices[bNext]);

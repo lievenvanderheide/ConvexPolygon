@@ -3,9 +3,6 @@
 #include <cstdint>
 #include <cassert>
 
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-
 #include "Vec.h"
 #include "Utils.h"
 
@@ -36,7 +33,7 @@ public:
 
 	/// Returns whether this polygon and the given polygon overlap. Polygons are
 	/// still considered to be overlapping if they only overlap on their boundary.
-	bool overlaps(const ConvexPolygon &b, HDC hdc) const;
+	bool overlaps(const ConvexPolygon &b) const;
 
 private:
 	int mNumVertices;

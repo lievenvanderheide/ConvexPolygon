@@ -49,7 +49,7 @@ public:
 
 	/// A lexicographical less-than comparison. This function first compares the
 	/// x coordinates of both vectors, and uses the y coordinates to break ties.
-	static bool lexLT(Vec2 a, Vec2 b)
+	static bool lexLessThan(Vec2 a, Vec2 b)
 	{
 		if(a.mX != b.mX)
 		{
